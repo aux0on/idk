@@ -49,7 +49,11 @@ function Maid:Destroy()
 end
 
 local RootMaid = Maid.new()
-local shared = odh_shared_plugins
+local _shared = odh_shared_plugins
+local _game = _shared.game_name
+if _game == "Murder Mystery 2" then
+    _shared.load_from_github_url("/aux0on/idk/refs/heads/main/gun.lua")
+end
 
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
