@@ -203,7 +203,7 @@ if LocalPlayer.Character then
     onCharacterAdded(LocalPlayer.Character)
 end
 
-local section = shared.AddSection("Gun")
+local section = shared.AddSection("Gun+")
 
 section:AddToggle("Disable Gun Animations", function(bool)
     features.blockAnims = bool
