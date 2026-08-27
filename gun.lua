@@ -107,11 +107,6 @@ local function playSound(character, soundId)
     end)
 end
 
-local function isHoldingGun(character)
-    local tool = character:FindFirstChildOfClass("Tool")
-    return tool and tool.Name == "Gun"
-end
-
 local function setupGunSystem(character)
     local data = charData[character]
     if not data then
@@ -129,13 +124,31 @@ local function setupGunSystem(character)
     if not humanoid then return end
     local animator = humanoid:FindFirstChild("Animator")
 
+    local isGunEquipped = false
+    local initialTool = character:FindFirstChildOfClass("Tool")
+    if initialTool and initialTool.Name == "Gun" then
+        isGunEquipped = true
+    end
+
+    data.maid:GiveTask(character.ChildAdded:Connect(function(child)
+        if child:IsA("Tool") and child.Name == "Gun" then
+            isGunEquipped = true
+        end
+    end))
+
+    data.maid:GiveTask(character.ChildRemoved:Connect(function(child)
+        if child:IsA("Tool") and child.Name == "Gun" then
+            isGunEquipped = false
+            lastUnequippedTime = tick()
+        end
+    end))
+
     if features.blockAnims and animator then
         data.maid:GiveTask(animator.AnimationPlayed:Connect(function(track)
-            local holdingGun = isHoldingGun(character)
             local timeSinceUnequip = tick() - lastUnequippedTime
             local withinCooldown = timeSinceUnequip <= COOLDOWN_DURATION
 
-            if holdingGun or withinCooldown then
+            if isGunEquipped or withinCooldown then
                 if track.Priority == Enum.AnimationPriority.Action then
                     track:Stop()
                 end
@@ -153,7 +166,6 @@ local function setupGunSystem(character)
         
         data.maid:GiveTask(character.ChildRemoved:Connect(function(child)
             if child:IsA("Tool") and child.Name == "Gun" then
-                lastUnequippedTime = tick()
                 task.wait(0.05)
                 playSound(character, SOUND_ID)
             end
