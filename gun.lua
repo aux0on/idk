@@ -120,9 +120,10 @@ local function setupGunSystem(character)
         end))
     end
 
-    local humanoid = character:FindFirstChild("Humanoid")
+    local humanoid = character:WaitForChild("Humanoid", 10)
     if not humanoid then return end
-    local animator = humanoid:FindFirstChild("Animator")
+    local animator = humanoid:WaitForChild("Animator", 10)
+    if not animator then return end
 
     local isGunEquipped = false
     local initialTool = character:FindFirstChildOfClass("Tool")
@@ -143,7 +144,7 @@ local function setupGunSystem(character)
         end
     end))
 
-    if features.blockAnims and animator then
+    if features.blockAnims then
         data.maid:GiveTask(animator.AnimationPlayed:Connect(function(track)
             local timeSinceUnequip = tick() - lastUnequippedTime
             local withinCooldown = timeSinceUnequip <= COOLDOWN_DURATION
