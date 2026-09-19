@@ -56,6 +56,8 @@ end)
 
 if shared.game_name ~= "Murder Mystery 2" then return end
 
+local gp = shared.CreateTab("Gun+", "/aux0on/GPIcon/refs/heads/main/Untitled163_20260919034104")
+
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 
@@ -221,7 +223,7 @@ if LocalPlayer.Character then
     onCharacterAdded(LocalPlayer.Character)
 end
 
-local section = shared.AddSection("Gun+")
+local section = gp:AddSection("Gun+", "MM2")
 
 section:AddToggle("Disable Gun Animations", function(bool)
     features.blockAnims = bool
