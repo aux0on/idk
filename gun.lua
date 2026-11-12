@@ -56,87 +56,196 @@ end)
 
 if shared.game_name ~= "Murder Mystery 2" then return end
 
-local rgdp = shared.CreateTab("Ragdoll Players", "/aux0on/rgdpIcon/refs/heads/main/Untitled163_20260919034104")
-local section = rgdp:AddSection("Ragdoll Players", "MM2")
+local gp = shared.CreateTab("Gun+", "/aux0on/GPIcon/refs/heads/main/Untitled163_20260919034104")
 
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 
-local DEFAULT_GRAVITY = 196.2
-local ragdollEnabled = false
+local COOLDOWN_DURATION = 5
+local SOUND_ID = "rbxassetid://6968135315"
+local START_OFFSET = 0
 
-local rgdpMaid = Maid.new()
+local features = {
+    blockAnims = false,
+    equipSound = false,
+}
 
-local function applyGravityToCharacter(char)
-    if not ragdollEnabled then return end
-    workspace.Gravity = 0
+local charData = {}
+local currentSounds = {}
+local lastUnequippedTime = 0
+
+local function cleanCharacter(character)
+    local data = charData[character]
+    if data then
+        if data.maid then
+            data.maid:DoCleaning()
+        end
+        charData[character] = nil
+    end
+
+    local sound = currentSounds[character]
+    if sound then
+        sound:Stop()
+        sound:Destroy()
+        currentSounds[character] = nil
+    end
+end
+
+local function playSound(character, soundId)
+    if not features.equipSound then return end
     
-    local root = char:WaitForChild("HumanoidRootPart", 5)
-    local hum  = char:WaitForChild("Humanoid", 5)
-    if not root or not hum then return end
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
 
-    local originalJumpPower = hum.JumpPower
-    local originalUseJumpPower = hum.UseJumpPower
+    local sound = Instance.new("Sound")
+    sound.SoundId = soundId
+    sound.Volume = 1
+    sound.Parent = hrp
+    sound:Play()
 
-    hum.UseJumpPower = true
-    hum.JumpPower = (originalJumpPower > 0 and originalJumpPower or 50) * 0.925
+    currentSounds[character] = sound
 
-    local localAttachment = Instance.new("Attachment", root)
-    local localForce = Instance.new("VectorForce")
-    localForce.Attachment0 = localAttachment
-    localForce.RelativeTo = Enum.ActuatorRelativeTo.World
-    localForce.Parent = root
-
-    rgdpMaid:GiveTask(function()
-        workspace.Gravity = DEFAULT_GRAVITY
-        if hum and hum.Parent then
-            hum.JumpPower = originalJumpPower
-            hum.UseJumpPower = originalUseJumpPower
+    sound.Ended:Once(function()
+        if currentSounds[character] == sound then
+            currentSounds[character] = nil
         end
-        if localForce then localForce:Destroy() end
-        if localAttachment then localAttachment:Destroy() end
+        sound:Destroy()
     end)
+end
 
-    rgdpMaid:GiveTask(task.spawn(function()
-        while char and char.Parent and localForce do
-            if hum:GetState() == Enum.HumanoidStateType.Climbing then
-                localForce.Force = Vector3.zero
-            else
-                localForce.Force = Vector3.new(0, -root.AssemblyMass * DEFAULT_GRAVITY, 0)
+local function setupGunSystem(character)
+    local data = charData[character]
+    if not data then
+        data = { maid = Maid.new() }
+        charData[character] = data
+        
+        data.maid:GiveTask(character.AncestryChanged:Connect(function()
+            if not character.Parent then
+                cleanCharacter(character)
             end
-            task.wait()
+        end))
+    end
+
+    local humanoid = character:WaitForChild("Humanoid", 10)
+    if not humanoid then return end
+    local animator = humanoid:WaitForChild("Animator", 10)
+    if not animator then return end
+
+    local isGunEquipped = false
+    local initialTool = character:FindFirstChildOfClass("Tool")
+    if initialTool and initialTool.Name == "Gun" then
+        isGunEquipped = true
+    end
+
+    data.maid:GiveTask(character.ChildAdded:Connect(function(child)
+        if child:IsA("Tool") and child.Name == "Gun" then
+            isGunEquipped = true
         end
     end))
-end
 
-local function enableRagdollSystem()
-    rgdpMaid:DoCleaning()
-    rgdpMaid = Maid.new()
+    data.maid:GiveTask(character.ChildRemoved:Connect(function(child)
+        if child:IsA("Tool") and child.Name == "Gun" then
+            isGunEquipped = false
+            lastUnequippedTime = tick()
+        end
+    end))
 
-    if LocalPlayer.Character then
-        applyGravityToCharacter(LocalPlayer.Character)
+    if features.blockAnims then
+        data.maid:GiveTask(animator.AnimationPlayed:Connect(function(track)
+            local timeSinceUnequip = tick() - lastUnequippedTime
+            local withinCooldown = timeSinceUnequip <= COOLDOWN_DURATION
+
+            if isGunEquipped or withinCooldown then
+                if track.Priority == Enum.AnimationPriority.Action then
+                    track:Stop()
+                end
+            end
+        end))
     end
 
-    rgdpMaid:GiveTask(LocalPlayer.CharacterAdded:Connect(function(char)
-        char:WaitForChild("HumanoidRootPart", 10)
-        applyGravityToCharacter(char)
+    if features.equipSound then
+        data.maid:GiveTask(character.ChildAdded:Connect(function(child)
+            if child:IsA("Tool") and child.Name == "Gun" then
+                task.wait(0.05)
+                playSound(character, SOUND_ID)
+            end
+        end))
+        
+        data.maid:GiveTask(character.ChildRemoved:Connect(function(child)
+            if child:IsA("Tool") and child.Name == "Gun" then
+                task.wait(0.05)
+                playSound(character, SOUND_ID)
+            end
+        end))
+    end
+end
+
+local function onCharacterAdded(character)
+    character:WaitForChild("Humanoid", 10)
+    local hrp = character:WaitForChild("HumanoidRootPart", 10)
+    if hrp then
+        setupGunSystem(character)
+    end
+end
+
+local globalMaid = Maid.new()
+
+local function refreshSystem()
+    globalMaid:DoCleaning()
+    globalMaid = Maid.new()
+    
+    for character, data in pairs(charData) do
+        cleanCharacter(character)
+    end
+    charData = {}
+    lastUnequippedTime = 0
+    
+    for character, sound in pairs(currentSounds) do
+        sound:Stop()
+        sound:Destroy()
+        currentSounds[character] = nil
+    end
+    
+    if not features.blockAnims and not features.equipSound then
+        return
+    end
+    
+    if LocalPlayer.Character then
+        setupGunSystem(LocalPlayer.Character)
+    end
+    
+    globalMaid:GiveTask(LocalPlayer.CharacterAdded:Connect(function(character)
+        onCharacterAdded(character)
     end))
 end
 
-local function disableRagdollSystem()
-    rgdpMaid:DoCleaning()
-    workspace.Gravity = DEFAULT_GRAVITY
+if LocalPlayer.Character then
+    onCharacterAdded(LocalPlayer.Character)
 end
 
-section:AddToggle("Enable Player Ragdolls", function(bool)
-    ragdollEnabled = bool
-    if ragdollEnabled then
-        enableRagdollSystem()
-    else
-        disableRagdollSystem()
-    end
+local section = gp:AddSection("Gun+", "MM2")
+
+section:AddToggle("Disable Gun Animations", function(bool)
+    features.blockAnims = bool
+    refreshSystem()
+end)
+
+section:AddToggle("Enable Un/Equip Sounds", function(bool)
+    features.equipSound = bool
+    refreshSystem()
 end)
 
 RootMaid:GiveTask(function()
-    disableRagdollSystem()
+    features.blockAnims = false
+    features.equipSound = false
+    globalMaid:DoCleaning()
+    for character, data in pairs(charData) do
+        cleanCharacter(character)
+    end
+    charData = {}
+    for character, sound in pairs(currentSounds) do
+        sound:Stop()
+        sound:Destroy()
+        currentSounds[character] = nil
+    end
 end)
